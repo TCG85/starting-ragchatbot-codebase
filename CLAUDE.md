@@ -9,6 +9,20 @@ Requires a `.env` file in the project root:
 ANTHROPIC_API_KEY=your_key_here
 ```
 
+**Before starting the server**, verify both models in `backend/config.py` are valid:
+
+1. **`ANTHROPIC_MODEL`** — must be a current Anthropic model ID. Valid options (as of 2026-04):
+   - `claude-opus-4-7`
+   - `claude-sonnet-4-6` (default)
+   - `claude-haiku-4-5-20251001`
+   If the model returns a 404 from the API, update it to the latest Sonnet model and inform the user.
+
+2. **`EMBEDDING_MODEL`** — must be a valid `sentence-transformers` model name (e.g. `all-MiniLM-L6-v2`). Verify it can be loaded by running:
+   ```bash
+   cd backend && uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('OK')"
+   ```
+   If it fails, inform the user and suggest a valid replacement.
+
 ```bash
 # Quick start
 ./run.sh
@@ -62,7 +76,7 @@ Lesson Link: <url>
 <content...>
 ```
 
-**Key config** (`backend/config.py`): model (`claude-sonnet-4-20250514`), chunk size, max search results (5), max conversation history (2 turns).
+**Key config** (`backend/config.py`): model (`claude-sonnet-4-6`), chunk size, max search results (5), max conversation history (2 turns).
 
 ## Adding a new tool
 
