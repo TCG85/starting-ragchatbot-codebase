@@ -1,3 +1,6 @@
+# Local Claude instructions
+CLAUDE.local.md
+
 # Environment variables
 .env
 backend/.env
