@@ -37,7 +37,7 @@ Provide only the direct answer to what was asked.
         self.base_params = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": 800
+            "max_tokens": 2048
         }
     
     def generate_response(self, query: str,
@@ -119,9 +119,11 @@ Provide only the direct answer to what was asked.
                     "content": tool_result
                 })
         
-        # Add tool results as single message
+        # Add tool results with explicit synthesis instruction
         if tool_results:
-            messages.append({"role": "user", "content": tool_results})
+            messages.append({"role": "user", "content": tool_results + [
+                {"type": "text", "text": "Please answer the original question using the search results above."}
+            ]})
         
         # Prepare final API call without tools
         final_params = {
@@ -132,4 +134,6 @@ Provide only the direct answer to what was asked.
         
         # Get final response
         final_response = self.client.messages.create(**final_params)
+        if not final_response.content:
+            return "I found relevant content but was unable to generate a response. Please try rephrasing your question."
         return final_response.content[0].text
