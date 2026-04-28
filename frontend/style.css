@@ -111,6 +111,33 @@ header h1 {
     margin-bottom: 0;
 }
 
+/* New Chat Button */
+.new-chat-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 0.5rem 1rem;
+    text-transform: uppercase;
+    width: 100%;
+    text-align: left;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.new-chat-btn:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.new-chat-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 /* Main Chat Area */
 .chat-main {
     flex: 1;

@@ -28,8 +28,12 @@ function setupEventListeners() {
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    
-    
+
+    // New chat button
+    document.getElementById('newChatBtn').addEventListener('click', () => {
+        createNewSession(currentSessionId);
+    });
+
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
         button.addEventListener('click', (e) => {
@@ -151,7 +155,14 @@ function escapeHtml(text) {
 
 // Removed removeMessage function - no longer needed since we handle loading differently
 
-async function createNewSession() {
+async function createNewSession(oldSessionId = null) {
+    if (oldSessionId) {
+        try {
+            await fetch(`${API_URL}/session/${oldSessionId}`, { method: 'DELETE' });
+        } catch (e) {
+            // non-fatal: backend session will be orphaned but harmless
+        }
+    }
     currentSessionId = null;
     chatMessages.innerHTML = '';
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
