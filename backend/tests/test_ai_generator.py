@@ -175,12 +175,16 @@ def test_synthesis_instruction_appended_to_tool_result_message(generator, mock_a
     assert any("answer" in b["text"].lower() or "question" in b["text"].lower() for b in text_blocks)
 
 
-def test_second_api_call_has_no_tools_parameter(generator, mock_anthropic):
-    """Second call must not include 'tools' — avoids infinite tool loop."""
-    tool_block = _make_tool_block("search_course_content", {"query": "x"})
+def test_synthesis_call_after_max_rounds_has_no_tools(generator, mock_anthropic):
+    """Synthesis call after max_rounds must not include 'tools' — avoids infinite tool loop."""
+    tool_block1 = _make_tool_block("search_course_content", {"query": "x"}, "tu_001")
+    tool_block2 = _make_tool_block("get_course_outline", {"course_name": "c"}, "tu_002")
+    tool_block3 = _make_tool_block("search_course_content", {"query": "y"}, "tu_003")
     mock_anthropic.messages.create.side_effect = [
-        _make_response("tool_use", tool_blocks=[tool_block]),
-        _make_response("end_turn", text="answer"),
+        _make_response("tool_use", tool_blocks=[tool_block1]),
+        _make_response("tool_use", tool_blocks=[tool_block2]),
+        _make_response("tool_use", tool_blocks=[tool_block3]),
+        _make_response("end_turn", text="final answer"),
     ]
     tool_manager = MagicMock()
     tool_manager.execute_tool.return_value = "result"
@@ -189,8 +193,8 @@ def test_second_api_call_has_no_tools_parameter(generator, mock_anthropic):
         query="q", tools=[{"name": "search_course_content"}], tool_manager=tool_manager
     )
 
-    second_call_kwargs = mock_anthropic.messages.create.call_args_list[1][1]
-    assert "tools" not in second_call_kwargs
+    synthesis_call_kwargs = mock_anthropic.messages.create.call_args_list[3][1]
+    assert "tools" not in synthesis_call_kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -263,4 +267,149 @@ def test_search_error_string_reaches_second_api_call(generator, mock_anthropic):
     assert error_payload in tool_result_block["content"]
 
     # And Claude's response reflects the error
+    assert "wasn't able" in result or "error" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Sequential tool calling (multi-round agentic loop)
+# ---------------------------------------------------------------------------
+
+def test_sequential_two_rounds_makes_three_api_calls(generator, mock_anthropic):
+    tool_block1 = _make_tool_block("get_course_outline", {"course_name": "MCP"}, "tu_001")
+    tool_block2 = _make_tool_block("search_course_content", {"query": "MCP lesson 4"}, "tu_002")
+    mock_anthropic.messages.create.side_effect = [
+        _make_response("tool_use", tool_blocks=[tool_block1]),
+        _make_response("tool_use", tool_blocks=[tool_block2]),
+        _make_response("end_turn", text="Here is the combined answer."),
+    ]
+    tool_manager = MagicMock()
+    tool_manager.execute_tool.return_value = "some content"
+
+    result = generator.generate_response(
+        query="What topic does lesson 4 of the MCP course cover?",
+        tools=[{"name": "get_course_outline"}, {"name": "search_course_content"}],
+        tool_manager=tool_manager,
+    )
+
+    assert mock_anthropic.messages.create.call_count == 3
+    assert result == "Here is the combined answer."
+
+
+def test_sequential_two_rounds_executes_both_tools(generator, mock_anthropic):
+    tool_block1 = _make_tool_block("get_course_outline", {"course_name": "MCP"}, "tu_001")
+    tool_block2 = _make_tool_block("search_course_content", {"query": "agents"}, "tu_002")
+    mock_anthropic.messages.create.side_effect = [
+        _make_response("tool_use", tool_blocks=[tool_block1]),
+        _make_response("tool_use", tool_blocks=[tool_block2]),
+        _make_response("end_turn", text="Done."),
+    ]
+    tool_manager = MagicMock()
+    tool_manager.execute_tool.side_effect = ["outline result", "search result"]
+
+    generator.generate_response(
+        query="multi-tool query",
+        tools=[{"name": "get_course_outline"}, {"name": "search_course_content"}],
+        tool_manager=tool_manager,
+    )
+
+    assert tool_manager.execute_tool.call_count == 2
+    tool_manager.execute_tool.assert_any_call("get_course_outline", course_name="MCP")
+    tool_manager.execute_tool.assert_any_call("search_course_content", query="agents")
+
+
+def test_sequential_final_synthesis_call_has_no_tools_two_rounds(generator, mock_anthropic):
+    """When loop exits after max_rounds, synthesis call must not include tools."""
+    tool_block1 = _make_tool_block("get_course_outline", {"course_name": "MCP"}, "tu_001")
+    tool_block2 = _make_tool_block("search_course_content", {"query": "lesson 4"}, "tu_002")
+    tool_block3 = _make_tool_block("search_course_content", {"query": "related"}, "tu_003")
+    mock_anthropic.messages.create.side_effect = [
+        _make_response("tool_use", tool_blocks=[tool_block1]),
+        _make_response("tool_use", tool_blocks=[tool_block2]),
+        _make_response("tool_use", tool_blocks=[tool_block3]),
+        _make_response("end_turn", text="Synthesized answer."),
+    ]
+    tool_manager = MagicMock()
+    tool_manager.execute_tool.return_value = "content"
+
+    generator.generate_response(
+        query="q",
+        tools=[{"name": "get_course_outline"}, {"name": "search_course_content"}],
+        tool_manager=tool_manager,
+    )
+
+    synthesis_kwargs = mock_anthropic.messages.create.call_args_list[3][1]
+    assert "tools" not in synthesis_kwargs
+
+
+def test_max_rounds_capped_at_two(generator, mock_anthropic):
+    """Loop stops after 2 rounds even if Claude keeps requesting tool_use."""
+    tool_block1 = _make_tool_block("search_course_content", {"query": "q1"}, "tu_001")
+    tool_block2 = _make_tool_block("search_course_content", {"query": "q2"}, "tu_002")
+    tool_block3 = _make_tool_block("search_course_content", {"query": "q3"}, "tu_003")
+    mock_anthropic.messages.create.side_effect = [
+        _make_response("tool_use", tool_blocks=[tool_block1]),
+        _make_response("tool_use", tool_blocks=[tool_block2]),
+        _make_response("tool_use", tool_blocks=[tool_block3]),
+        _make_response("end_turn", text="Final synthesized answer."),
+    ]
+    tool_manager = MagicMock()
+    tool_manager.execute_tool.return_value = "some result"
+
+    result = generator.generate_response(
+        query="complex query",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=tool_manager,
+    )
+
+    assert mock_anthropic.messages.create.call_count == 4
+    assert tool_manager.execute_tool.call_count == 3
+    assert result == "Final synthesized answer."
+
+
+def test_single_round_tool_use_regression(generator, mock_anthropic):
+    """Single-round path: loop exits on end_turn with no extra synthesis call."""
+    tool_block = _make_tool_block("search_course_content", {"query": "MCP"}, "tu_001")
+    mock_anthropic.messages.create.side_effect = [
+        _make_response("tool_use", tool_blocks=[tool_block]),
+        _make_response("end_turn", text="Direct answer from loop."),
+    ]
+    tool_manager = MagicMock()
+    tool_manager.execute_tool.return_value = "search content"
+
+    result = generator.generate_response(
+        query="Tell me about MCP",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=tool_manager,
+    )
+
+    assert mock_anthropic.messages.create.call_count == 2
+    assert result == "Direct answer from loop."
+
+
+def test_tool_error_mid_loop_reaches_synthesis(generator, mock_anthropic):
+    """A tool execution error becomes string content passed to Claude, not an exception."""
+    tool_block = _make_tool_block("search_course_content", {"query": "MCP"}, "tu_err")
+    mock_anthropic.messages.create.side_effect = [
+        _make_response("tool_use", tool_blocks=[tool_block]),
+        _make_response("end_turn", text="I wasn't able to retrieve the content."),
+    ]
+    tool_manager = MagicMock()
+    tool_manager.execute_tool.side_effect = RuntimeError("DB unavailable")
+
+    result = generator.generate_response(
+        query="What is MCP?",
+        tools=[{"name": "search_course_content"}],
+        tool_manager=tool_manager,
+    )
+
+    assert mock_anthropic.messages.create.call_count == 2
+
+    second_call_kwargs = mock_anthropic.messages.create.call_args_list[1][1]
+    messages = second_call_kwargs["messages"]
+    last_message = messages[-1]
+    tool_result_block = next(
+        item for item in last_message["content"]
+        if isinstance(item, dict) and item.get("type") == "tool_result"
+    )
+    assert "DB unavailable" in tool_result_block["content"]
     assert "wasn't able" in result or "error" in result.lower()
