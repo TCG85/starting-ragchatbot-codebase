@@ -23,6 +23,9 @@ backend/chroma_db/
 # Uploads
 uploads/
 
+# Playwright MCP artifacts
+.playwright-mcp/
+
 # IDE
 .vscode/
 .idea/
