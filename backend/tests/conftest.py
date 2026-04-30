@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 import tempfile
+from unittest.mock import MagicMock
 from models import Course, Lesson, CourseChunk
 from vector_store import VectorStore
 
@@ -48,3 +49,16 @@ def seeded_vector_store(tmp_chroma_path):
     ]
     store.add_course_content(chunks)
     return store
+
+
+@pytest.fixture
+def mock_rag_system():
+    """Mocked RAGSystem for use in API endpoint tests."""
+    mock = MagicMock()
+    mock.session_manager.create_session.return_value = "generated-session-id"
+    mock.query.return_value = ("Test answer", [])
+    mock.get_course_analytics.return_value = {
+        "total_courses": 2,
+        "course_titles": ["MCP Course", "Agents Course"],
+    }
+    return mock
