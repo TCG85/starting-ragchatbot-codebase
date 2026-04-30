@@ -44,7 +44,6 @@ function setupEventListeners() {
     });
 }
 
-
 // Chat Functions
 async function sendMessage() {
     const query = chatInput.value.trim();
